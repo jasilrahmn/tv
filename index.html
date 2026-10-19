@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reel TV Streamer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, sans-serif;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Top Controls Bar */
+    .controls {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 12px 18px;
+      background: rgba(12, 12, 12, 0.95);
+      backdrop-filter: blur(8px);
+      display: flex;
+      gap: 10px;
+      z-index: 100;
+      border-bottom: 1px solid #222;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+    }
+
+    .controls.hidden {
+      transform: translateY(-100%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 16px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #181818;
+      color: #fff;
+      outline: none;
+    }
+
+    input[type="text"]:focus {
+      border-color: #e1306c;
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      background: #e1306c;
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button.secondary {
+      background: #262626;
+      border: 1px solid #383838;
+    }
+
+    button:hover, button:focus {
+      filter: brightness(1.2);
+      outline: 2px solid #fff;
+    }
+
+    /* On-screen floating menu trigger for TV remotes */
+    .menu-trigger {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 90;
+      opacity: 0.35;
+      padding: 8px 14px;
+      background: #1e1e1e;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .menu-trigger:hover, .menu-trigger:focus {
+      opacity: 1;
+    }
+
+    /* Status Notifications */
+    #status {
+      position: fixed;
+      bottom: 24px;
+      padding: 10px 20px;
+      background: rgba(24, 24, 24, 0.9);
+      border: 1px solid #333;
+      border-radius: 30px;
+      font-size: 14px;
+      color: #ddd;
+      display: none;
+      z-index: 80;
+    }
+
+    /* Native HTML5 Video Element */
+    video {
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain; /* Automatically fits 16:9 or 9:16 cleanly with zero stretch */
+      background: #000;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+
+  <button class="menu-trigger" onclick="toggleMenu(false)">Menu</button>
+
+  <div class="controls" id="controlBar">
+    <input 
+      type="text" 
+      id="urlInput" 
+      placeholder="Paste Instagram Reel link..." 
+      onkeydown="if(event.key === 'Enter') startStream()"
+    />
+    <button onclick="startStream()">Play</button>
+    <button class="secondary" onclick="toggleMenu(true)">Hide Bar</button>
+  </div>
+
+  <div id="status"></div>
+
+  <video id="player" controls autoplay playsinline></video>
+
+  <script>
+    // List of public API mirrors for reliability
+    const API_ENDPOINTS = [
+      "https://api.cobalt.tools",
+      "https://cobalt-api.kwiatekm.tokyo",
+      "https://api.server.ovh"
+    ];
+
+    function showStatus(text, autoHideMs = 0) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.style.display = 'block';
+      if (autoHideMs > 0) {
+        setTimeout(() => { el.style.display = 'none'; }, autoHideMs);
+      }
+    }
+
+    async function fetchStreamUrl(targetUrl) {
+      for (const endpoint of API_ENDPOINTS) {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              url: targetUrl,
+              videoQuality: "max"
+            })
+          });
+
+          if (!res.ok) continue;
+
+          const data = await res.json();
+          if (data.url) return data.url;
+        } catch (e) {
+          // Fall through to next mirror
+        }
+      }
+      return null;
+    }
+
+    async function startStream() {
+      const input = document.getElementById('urlInput');
+      const rawUrl = input.value.trim();
+      const video = document.getElementById('player');
+
+      if (!rawUrl) return;
+
+      showStatus("Resolving direct video stream...");
+
+      const streamUrl = await fetchStreamUrl(rawUrl);
+
+      if (streamUrl) {
+        video.src = streamUrl;
+        video.play().catch(() => {});
+        toggleMenu(true);
+        showStatus("Streaming", 2500);
+      } else {
+        showStatus("Could not extract video stream. Check the link or try another.");
+      }
+    }
+
+    function toggleMenu(hide) {
+      const bar = document.getElementById('controlBar');
+      if (hide) {
+        bar.classList.add('hidden');
+      } else {
+        bar.classList.remove('hidden');
+      }
+    }
+
+    // Auto-stream if link passed via query parameter (?url=https://...)
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const passedUrl = params.get('url');
+      if (passedUrl) {
+        document.getElementById('urlInput').value = passedUrl;
+        startStream();
+      }
+    });
+  </script>
+
+</body>
+</html>
